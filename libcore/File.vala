@@ -42,10 +42,13 @@ public class Files.File : GLib.Object {
     public signal void destroy ();
 
     public bool is_gone;
+    // The location is guaranteed non-null, but the parent directory may be null
     public GLib.File location { get; construct; }
+    public GLib.File? directory { get; construct; } /* parent directory location */
+
     public GLib.File target_location = null;
     public Files.File target_gof = null;
-    public GLib.File directory { get; construct; } /* parent directory location */
+
     public GLib.Icon? icon = null;
     public GLib.List<string>? emblems_list = null;
     public uint n_emblems = 0;
@@ -57,6 +60,7 @@ public class Files.File : GLib.Object {
     public string format_size = null;
     public int color = 0;
     public uint64 modified;
+    public uint64 created;
     public string formated_modified = null;
     public string formated_type = null;
     public string tagstype = null;
@@ -157,7 +161,7 @@ public class Files.File : GLib.Object {
         return null;
     }
 
-    public File (GLib.File location, GLib.File? dir = null) {
+    public File (GLib.File location, GLib.File? dir) {
         Object (
             location: location,
             uri: location.get_uri (),
@@ -445,6 +449,7 @@ public class Files.File : GLib.Object {
         file_type = info.get_file_type ();
         is_directory = (file_type == GLib.FileType.DIRECTORY);
         modified = info.get_attribute_uint64 (GLib.FileAttribute.TIME_MODIFIED);
+        created = info.get_attribute_uint64 (GLib.FileAttribute.TIME_CREATED);
 
         /* metadata */
         if (is_directory) {
@@ -1183,7 +1188,7 @@ public class Files.File : GLib.Object {
     }
 
     // We want date to sort in reverse order by default
-    private int compare_files_by_time (Files.File other) {
+    public int compare_files_by_time (Files.File other) {
         if (modified < other.modified)
             return 1;
         else if (modified > other.modified)
@@ -1192,7 +1197,16 @@ public class Files.File : GLib.Object {
         return 0;
     }
 
-    private int compare_by_type (Files.File other) {
+    public int compare_files_by_created (Files.File other) {
+        if (created < other.created)
+            return 1;
+        else if (created > other.created)
+            return -1;
+
+        return 0;
+    }
+
+    public int compare_by_type (Files.File other) {
         /* Directories go first. Then, if mime types are identical,
          * don't bother getting strings (for speed). This assumes
          * that the string is dependent entirely on the mime type,
@@ -1209,7 +1223,7 @@ public class Files.File : GLib.Object {
         return formated_type.collate (other.formated_type);
     }
 
-    private int compare_files_by_size (Files.File other) {
+    public int compare_files_by_size (Files.File other) {
         if (size < other.size) {
             return -1;
         } else if (size > other.size) {
@@ -1219,7 +1233,7 @@ public class Files.File : GLib.Object {
         return 0;
     }
 
-    private int compare_by_size (Files.File other) {
+    public int compare_by_size (Files.File other) {
         /* As folder files have a fixed standard size (4K) assign them a virtual size of -1 for now
          * so always sorts first. */
 

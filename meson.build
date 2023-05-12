@@ -1,8 +1,8 @@
 project(
     'io.elementary.files',
     'vala', 'c',
-    version: '6.2.1',
-    meson_version: '>= 0.50.0'
+    version: '6.3.1',
+    meson_version: '>= 0.58.0'
 )
 
 #
@@ -37,7 +37,7 @@ endif
 #
 # Project dependencies
 #
-min_glib_version = '2.40'
+min_glib_version = '2.64.6'
 
 glib_dep = dependency('glib-2.0', version: '>='+min_glib_version)
 gobject_dep = dependency('gobject-2.0', version: '>='+min_glib_version)
@@ -86,7 +86,7 @@ add_project_arguments(
 config_data = configuration_data()
 config_data.set('plugin_dir', plugin_dir)
 config_data.set('version', meson.project_version())
-config_data.set('testdata_dir', join_paths(meson.source_root(), 'data', 'tests'))
+config_data.set('testdata_dir', join_paths(meson.project_source_root(), 'data', 'tests'))
 config_data.set('app_name', meson.project_name())
 config_data.set('gettext_package', meson.project_name())
 config_data.set('locale_dir', join_paths(get_option('prefix'), get_option('localedir')))

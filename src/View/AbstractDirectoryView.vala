@@ -78,7 +78,7 @@ namespace Files {
             {"folders-first", on_background_action_folders_first_changed, null, "true"},
             {"show-hidden", null, null, "false", change_state_show_hidden},
             {"show-remote-thumbnails", null, null, "true", change_state_show_remote_thumbnails},
-            {"hide-local-thumbnails", null, null, "false", change_state_hide_local_thumbnails}
+            {"show-local-thumbnails", null, null, "true", change_state_show_local_thumbnails}
         };
 
         const GLib.ActionEntry [] COMMON_ENTRIES = {
@@ -260,7 +260,7 @@ namespace Files {
         protected bool is_loading;
         protected bool helpers_shown;
         protected bool show_remote_thumbnails {get; set; default = true;}
-        protected bool hide_local_thumbnails {get; set; default = false;}
+        protected bool show_local_thumbnails {get; set; default = false;}
 
         private bool all_selected = false;
 
@@ -302,8 +302,8 @@ namespace Files {
 
             Files.app_settings.bind ("show-remote-thumbnails",
                                                              this, "show_remote_thumbnails", SettingsBindFlags.GET);
-            Files.app_settings.bind ("hide-local-thumbnails",
-                                                             this, "hide_local_thumbnails", SettingsBindFlags.GET);
+            Files.app_settings.bind ("show-local-thumbnails",
+                                                             this, "show_local_thumbnails", SettingsBindFlags.GET);
 
              /* Currently, "single-click rename" is disabled, matching existing UI
               * Currently, "right margin unselects all" is disabled, matching existing UI
@@ -378,7 +378,7 @@ namespace Files {
             var prefs = (Files.Preferences.get_default ());
             prefs.notify["show-hidden-files"].connect (on_show_hidden_files_changed);
             prefs.notify["show-remote-thumbnails"].connect (on_show_remote_thumbnails_changed);
-            prefs.notify["hide-local-thumbnails"].connect (on_hide_local_thumbnails_changed);
+            prefs.notify["show-local-thumbnails"].connect (on_show_local_thumbnails_changed);
             prefs.notify["sort-directories-first"].connect (on_sort_directories_first_changed);
             prefs.bind_property (
                 "singleclick-select", this, "singleclick_select", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE
@@ -409,8 +409,8 @@ namespace Files {
             action_set_state (background_actions, "show-remote-thumbnails",
                               Files.app_settings.get_boolean ("show-remote-thumbnails"));
 
-            action_set_state (background_actions, "hide-local-thumbnails",
-                              Files.app_settings.get_boolean ("hide-local-thumbnails"));
+            action_set_state (background_actions, "show-local-thumbnails",
+                              Files.app_settings.get_boolean ("show-local-thumbnails"));
         }
 
         public void zoom_in () {
@@ -637,11 +637,13 @@ namespace Files {
         }
 
         protected void connect_directory_loading_handlers (Directory dir) {
+            model.set_sorting_off ();
             dir.file_loaded.connect (on_directory_file_loaded);
             dir.done_loading.connect (on_directory_done_loading);
         }
 
         protected void disconnect_directory_loading_handlers (Directory dir) {
+            model.set_sorting_on ();
             dir.file_loaded.disconnect (on_directory_file_loaded);
             dir.done_loading.disconnect (on_directory_done_loading);
         }
@@ -1103,21 +1105,23 @@ namespace Files {
         }
 
         private void on_selection_action_rename (GLib.SimpleAction action, GLib.Variant? param) {
-            rename_selected_file ();
+            rename_selection ();
         }
 
-        private void rename_selected_file () {
+        private void rename_selection () {
             if (selected_files == null) {
                 return;
             }
 
             if (selected_files.next != null) {
-                warning ("Cannot rename multiple files (yet) - renaming first only");
+                var rename_dialog = new Files.RenamerDialog (selected_files) {
+                    transient_for = slot.window
+                };
+                rename_dialog.run ();
+                rename_dialog.destroy ();
+            } else {
+                rename_file (selected_files.data);
             }
-
-            /* Batch renaming will be provided by a contractor */
-
-            rename_file (selected_files.first ().data);
         }
 
         private void on_selection_action_cut (GLib.SimpleAction action, GLib.Variant? param) {
@@ -1184,8 +1188,8 @@ namespace Files {
             window.change_state_show_remote_thumbnails (action);
         }
 
-        private void change_state_hide_local_thumbnails (GLib.SimpleAction action) {
-            window.change_state_hide_local_thumbnails (action);
+        private void change_state_show_local_thumbnails (GLib.SimpleAction action) {
+            window.change_state_show_local_thumbnails (action);
         }
 
         private void on_background_action_new (GLib.SimpleAction action, GLib.Variant? param) {
@@ -1319,9 +1323,9 @@ namespace Files {
             }
         }
 
-        private void on_directory_file_added (Directory dir, Files.File? file) {
+        private void on_directory_file_added (Directory dir, Files.File? file, bool is_internal) {
             if (file != null) {
-                add_file (file, dir, true); /* Always select files added to view after initial load */
+                add_file (file, dir, is_internal); /* Only select files added to view by this app */
                 handle_free_space_change ();
             } else {
                 critical ("Null file added");
@@ -1342,7 +1346,7 @@ namespace Files {
                 model.file_changed (file, dir);
                 /* 2nd parameter is for returned request id if required - we do not use it? */
                 /* This is required if we need to dequeue the request */
-                if ((!slot.directory.is_network && !hide_local_thumbnails) ||
+                if ((!slot.directory.is_network && show_local_thumbnails) ||
                     (show_remote_thumbnails && slot.directory.can_open_files)) {
 
                     thumbnailer.queue_file (file, null, large_thumbnails);
@@ -1406,7 +1410,11 @@ namespace Files {
                 is_writable = false;
             }
 
-            thaw_tree ();
+            Idle.add (() => {
+                thaw_tree ();
+                return Source.REMOVE;
+            });
+
 
             schedule_thumbnail_color_tag_timeout ();
         }
@@ -1453,9 +1461,9 @@ namespace Files {
             slot.reload ();
         }
 
-        private void on_hide_local_thumbnails_changed (GLib.Object prefs, GLib.ParamSpec pspec) {
-            hide_local_thumbnails = ((Files.Preferences) prefs).hide_local_thumbnails;
-            action_set_state (background_actions, "hide-local-thumbnails", hide_local_thumbnails);
+        private void on_show_local_thumbnails_changed (GLib.Object prefs, GLib.ParamSpec pspec) {
+            show_local_thumbnails = ((Files.Preferences) prefs).show_local_thumbnails;
+            action_set_state (background_actions, "show-local-thumbnails", show_local_thumbnails);
             slot.reload ();
         }
 
@@ -1466,7 +1474,7 @@ namespace Files {
 
         private void directory_hidden_changed (Directory dir, bool show) {
             /* May not be slot.directory - could be subdirectory */
-            dir.file_loaded.connect (on_directory_file_loaded); /* disconnected by on_done_loading callback.*/
+            connect_directory_loading_handlers (dir);
             dir.load_hiddens ();
         }
 
@@ -1685,6 +1693,11 @@ namespace Files {
                             (Gtk.ApplicationWindow)Files.get_active_window (),
                             timestamp
                         );
+
+                        Idle.add (() => {
+                            update_selected_files_and_menu ();
+                            return Source.REMOVE;
+                        });
 
                         break;
 
@@ -2173,7 +2186,10 @@ namespace Files {
                         // Do not display 'Paste' menuitem if there is a selected folder ('Paste into' enabled)
                         if (common_actions.get_action_enabled ("paste-into") &&
                             clipboard != null && clipboard.can_paste) {
-                            var paste_into_menuitem = new Gtk.MenuItem ();
+                            var paste_into_menuitem = new Gtk.MenuItem () {
+                                action_name = "common.paste-into"
+                            };
+
                             if (clipboard.files_linked) {
                                 paste_into_menuitem.add (new Granite.AccelLabel (
                                     _("Paste Link into Folder"),
@@ -2230,22 +2246,6 @@ namespace Files {
                     menu.add (properties_menuitem);
                 }
             } else { // Add background folder actions
-                var show_hidden_menuitem = new Gtk.CheckMenuItem ();
-                show_hidden_menuitem.add (new Granite.AccelLabel (
-                    _("Show Hidden Files"),
-                    "<Ctrl>h"
-                ));
-                show_hidden_menuitem.action_name = "background.show-hidden";
-
-                var show_remote_thumbnails_menuitem = new Gtk.CheckMenuItem.with_label (_("Show Remote Thumbnails"));
-                show_remote_thumbnails_menuitem.action_name = "background.show-remote-thumbnails";
-
-                var hide_local_thumbnails_menuitem = new Gtk.CheckMenuItem.with_label (_("Hide Thumbnails"));
-                hide_local_thumbnails_menuitem.action_name = "background.hide-local-thumbnails";
-
-                var singleclick_select_menuitem = new Gtk.CheckMenuItem.with_label (_("Select Folders with Single Click"));
-                singleclick_select_menuitem.action_name = "win.singleclick-select";
-
                 if (in_trash) {
                     if (clipboard != null && clipboard.has_cutted_file (null)) {
                         paste_menuitem.add (new Granite.AccelLabel (
@@ -2265,9 +2265,6 @@ namespace Files {
                     menu.add (new Gtk.SeparatorMenuItem ());
                     menu.add (new SortSubMenuItem ());
                     menu.add (new Gtk.SeparatorMenuItem ());
-                    menu.add (singleclick_select_menuitem);
-                    menu.add (show_hidden_menuitem);
-                    menu.add (hide_local_thumbnails_menuitem);
                 } else {
                     if (!in_network_root) {
                         menu.add (new Gtk.SeparatorMenuItem ());
@@ -2303,16 +2300,6 @@ namespace Files {
                         window.can_bookmark_uri (slot.directory.file.uri)) {
 
                         menu.add (bookmark_menuitem);
-                    }
-
-                    menu.add (new Gtk.SeparatorMenuItem ());
-                    menu.add (singleclick_select_menuitem);
-                    menu.add (show_hidden_menuitem);
-
-                    if (!slot.directory.is_network) {
-                        menu.add (hide_local_thumbnails_menuitem);
-                    } else if (slot.directory.can_open_files) {
-                        menu.add (show_remote_thumbnails_menuitem);
                     }
 
                     if (!in_network_root) {
@@ -2512,7 +2499,7 @@ namespace Files {
             action_set_enabled (common_actions, "paste", !in_recent && is_writable);
             action_set_enabled (common_actions, "paste-into", !renaming & can_paste_into);
             action_set_enabled (common_actions, "open-in", !renaming & only_folders);
-            action_set_enabled (selection_actions, "rename", !renaming & is_selected && !more_than_one_selected && can_rename);
+            action_set_enabled (selection_actions, "rename", !renaming & is_selected && can_rename);
             action_set_enabled (selection_actions, "view-in-location", !renaming & is_selected);
             action_set_enabled (selection_actions, "open", !renaming && is_selected && !more_than_one_selected && can_open);
             action_set_enabled (selection_actions, "open-with-app", !renaming && can_open);
@@ -2780,7 +2767,7 @@ namespace Files {
                         if (file != null && !file.is_gone) {
                             // Only update thumbnail if it is going to be shown
                             if ((slot.directory.is_network && show_remote_thumbnails) ||
-                                (!slot.directory.is_network && !hide_local_thumbnails)) {
+                                (!slot.directory.is_network && show_local_thumbnails)) {
 
                                 file.query_thumbnail_update (); // Ensure thumbstate up to date
                                 /* Ask thumbnailer only if ThumbState UNKNOWN */
@@ -2992,7 +2979,7 @@ namespace Files {
 
                 case Gdk.Key.F2:
                     if (no_mods && selection_actions.get_action_enabled ("rename")) {
-                        rename_selected_file ();
+                        rename_selection ();
                         res = true;
                     }
 
@@ -3670,7 +3657,6 @@ namespace Files {
             uint button;
             event.get_coords (out x, out y);
             event.get_button (out button);
-            update_selected_files_and_menu ();
             /* Only take action if pointer has not moved */
             if (!Gtk.drag_check_threshold (get_child (), (int)drag_x, (int)drag_y, (int)x, (int)y)) {
                 if (should_activate) {
@@ -3682,22 +3668,19 @@ namespace Files {
                     });
                 } else if (should_deselect && click_path != null) {
                     unselect_path (click_path);
-                    /* Only need to update selected files if changed by this handler */
-                    Idle.add (() => {
-                        update_selected_files_and_menu ();
-                        return GLib.Source.REMOVE;
-                    });
                 } else if (should_select && click_path != null) {
                     select_path (click_path);
-                    /* Only need to update selected files if changed by this handler */
-                    Idle.add (() => {
-                        update_selected_files_and_menu ();
-                        return GLib.Source.REMOVE;
-                    });
                 } else if (button == Gdk.BUTTON_SECONDARY) {
                     show_context_menu (event);
                 }
             }
+
+            // Selection may have been changed *but not signalled* by rubberbanding
+            // in Gtk.TreeView (IconView does signal during rubberbanding)
+            Idle.add (() => {
+                update_selected_files_and_menu ();
+                return GLib.Source.REMOVE;
+            });
 
             should_activate = false;
             should_deselect = false;

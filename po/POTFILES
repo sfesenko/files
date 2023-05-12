@@ -34,9 +34,11 @@ libcore/UndoManager.vala
 libcore/UserUtils.vala
 
 libcore/FileOperations/CommonJob.vala
-libcore/FileOperations/DialogUtils.vala
 libcore/FileOperations/EmptyTrashJob.vala
 libcore/FileOperations/MountUtils.vala
+libcore/FileOperations/CopyMoveJob.vala
+libcore/FileOperations/CreateJob.vala
+libcore/FileOperations/DeleteJob.vala
 
 libcore/Widgets/BasicBreadcrumbsEntry.vala
 libcore/Widgets/BasicLocationBar.vala
@@ -59,6 +61,9 @@ src/IconRenderer.vala
 src/ZeitgeistManager.vala
 
 src/Dialogs/AbstractPropertiesDialog.vala
+src/Dialogs/BulkRenamer/RenamerDialog.vala
+src/Dialogs/BulkRenamer/RenamerListBox.vala
+src/Dialogs/BulkRenamer/RenamerModifier.vala
 src/Dialogs/ChooseAppDialog.vala
 src/Dialogs/PropertiesWindow.vala
 src/Dialogs/VolumePropertiesWindow.vala
